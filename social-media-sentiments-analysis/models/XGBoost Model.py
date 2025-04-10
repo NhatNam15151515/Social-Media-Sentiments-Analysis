@@ -120,8 +120,8 @@ sns.heatmap(cm, annot=True, fmt='d', cmap='Blues',
             yticklabels=label_encoder.classes_)
 plt.xlabel('Dự đoán')
 plt.ylabel('Thực tế')
-plt.title('Ma trận nhầm lẫn')
-plt.savefig('confusion_matrix_optimized.png')
+plt.title('Ma trận nhầm lẫn XGBoost')
+plt.savefig('confusion_matrix_XGB.png')
 
 # 9. Lưu mô hình và các thành phần cần thiết
 model.save_model('sentiment_XGB.model')

@@ -70,7 +70,7 @@ sns.heatmap(cm, annot=True, fmt='d', cmap='Greens',
 plt.xlabel('Dự đoán')
 plt.ylabel('Thực tế')
 plt.title('Ma trận nhầm lẫn - Logistic Regression')
-plt.savefig('confusion_matrix_logreg.png')
+plt.savefig('confusion_matrix_LR.png')
 plt.show()
 
 # 8. Lưu mô hình và các thành phần
