@@ -1,11 +1,10 @@
 import pickle
-import os
-import numpy as np
+import re
+import string
 
-# Load các thành phần cần thiết
-model_path = '../../train/Logistic_Regression/sentiment.pkl'
-vectorizer_path = '../../train/Logistic_Regression/vectorizer.pkl'
-label_encoder_path = '../../train/Logistic_Regression/label_encoder.pkl'
+model_path = '../../train_archive/Logistic_Regression/sentiment.pkl'
+vectorizer_path = '../../train_archive/Logistic_Regression/vectorizer.pkl'
+label_encoder_path = '../../train_archive/Logistic_Regression/label_encoder.pkl'
 
 with open(model_path, 'rb') as f:
     model = pickle.load(f)
@@ -32,22 +31,48 @@ def predict_sentiment(text):
     return result
 
 # ===== Danh sách mẫu test =====
+def preprocess_text(text, remove_stopwords=True):
+    # 1. Lowercase
+    text = text.lower()
+
+    # 2. Remove URLs and emails
+    text = re.sub(r"http\S+|www\S+|https\S+", '', text)
+    text = re.sub(r"\S+@\S+", '', text)
+
+    # 3. Remove emojis and non-ASCII characters
+    text = text.encode('ascii', 'ignore').decode('utf-8')  # giữ lại ASCII thôi
+
+    # 4. Remove punctuation
+    text = text.translate(str.maketrans('', '', string.punctuation))
+
+    # 5. Remove numbers
+    text = re.sub(r'\d+', '', text)
+
+    # 6. Remove extra whitespaces
+    text = re.sub(r'\s+', ' ', text).strip()
+
+    # 7. Remove stopwords (optional)
+    # if remove_stopwords:
+    #     text = ' '.join([word for word in text.split() if word not in ENGLISH_STOP_WORDS])
+    return text
+# 11. Test nhanh
 sample_texts = [
     # Positive
-    "The customer service here is truly excellent, the staff are very helpful and friendly.     # Positive",
-    "I've been using this product for 6 months and I'm completely satisfied. Totally worth the money.     # Positive",
-    "The app runs smoothly, has a beautiful interface, and is very easy to use. 10 out of 10! # Positive"     ,
+    "The customer service here is truly excellent, the staff are very helpful and friendly.",
+    "I've been using this product for 6 months and I'm completely satisfied. Totally worth the money.",
+    "The app runs smoothly, has a beautiful interface, and is very easy to use. 10 out of 10!"     ,
 
     # Negative
-    "I can't believe how bad this product is, I'm extremely disappointed. # Negative",
+    "I can't believe how bad this product is, I'm extremely disappointed.",
     "The app keeps crashing and it's basically unusable. # Negative",
-    "Delivery was almost a week late and nobody answered the customer service hotline. # Negative",
+    "Delivery was almost a week late and nobody answered the customer service hotline.",
 
     # Neutral
-    "I received the item yesterday, haven’t had time to try it yet so I can't say much. # Neutral",
-    "The product matches the description, packaging was okay, nothing special. # Neutral",
-    "It’s alright I guess, not too good but not too bad either.     # Neutral",
+    "The product matches the description, packaging was okay, nothing special.",
+    "Attending a virtual conference on AI.",
+    "Confusion surrounds me as I navigate through life's choices.",
 ]
+sample_texts = [preprocess_text(text) for text in sample_texts]
 
 # ===== Chạy dự đoán cho từng mẫu =====
 print("KẾT QUẢ DỰ ĐOÁN:\n")

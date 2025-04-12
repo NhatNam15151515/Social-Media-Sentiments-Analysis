@@ -1,12 +1,14 @@
 import pickle
 import xgboost as xgb
 import numpy as np
+import re
+import string
 # Load các thành phần đã lưu
 model = xgb.Booster()
-model.load_model('../../train/XGBoost/sentiment.model')
+model.load_model('../../train_archive/XGBoost/sentiment.model')
 
-vectorizer = pickle.load(open('../../train/XGBoost/vectorizer.pkl', 'rb'))
-label_encoder = pickle.load(open('../../train/XGBoost/label_encoder.pkl', 'rb'))
+vectorizer = pickle.load(open('../../train_archive/XGBoost/vectorizer.pkl', 'rb'))
+label_encoder = pickle.load(open('../../train_archive/XGBoost/label_encoder.pkl', 'rb'))
 
 def predict_sentiment(text, model=model, vectorizer=vectorizer, encoder=label_encoder):
     text_features = vectorizer.transform([text])
@@ -21,23 +23,49 @@ def predict_sentiment(text, model=model, vectorizer=vectorizer, encoder=label_en
         'probabilities': prob_dict
     }
 # ===== Dữ liệu test mẫu =====
+def preprocess_text(text, remove_stopwords=True):
+    # 1. Lowercase
+    text = text.lower()
+
+    # 2. Remove URLs and emails
+    text = re.sub(r"http\S+|www\S+|https\S+", '', text)
+    text = re.sub(r"\S+@\S+", '', text)
+
+    # 3. Remove emojis and non-ASCII characters
+    text = text.encode('ascii', 'ignore').decode('utf-8')  # giữ lại ASCII thôi
+
+    # 4. Remove punctuation
+    text = text.translate(str.maketrans('', '', string.punctuation))
+
+    # 5. Remove numbers
+    text = re.sub(r'\d+', '', text)
+
+    # 6. Remove extra whitespaces
+    text = re.sub(r'\s+', ' ', text).strip()
+
+    # 7. Remove stopwords (optional)
+    # if remove_stopwords:
+    #     text = ' '.join([word for word in text.split() if word not in ENGLISH_STOP_WORDS])
+
+    return text
+# 11. Test nhanh
 sample_texts = [
     # Positive
-    "The customer service here is truly excellent, the staff are very helpful and friendly.     # Positive",
-    "I've been using this product for 6 months and I'm completely satisfied. Totally worth the money.     # Positive",
-    "The app runs smoothly, has a beautiful interface, and is very easy to use. 10 out of 10! # Positive"     ,
+    "The customer service here is truly excellent, the staff are very helpful and friendly.",
+    "I've been using this product for 6 months and I'm completely satisfied. Totally worth the money.",
+    "The app runs smoothly, has a beautiful interface, and is very easy to use. 10 out of 10!"     ,
 
     # Negative
-    "I can't believe how bad this product is, I'm extremely disappointed. # Negative",
+    "I can't believe how bad this product is, I'm extremely disappointed.",
     "The app keeps crashing and it's basically unusable. # Negative",
-    "Delivery was almost a week late and nobody answered the customer service hotline. # Negative",
+    "Delivery was almost a week late and nobody answered the customer service hotline.",
 
     # Neutral
-    "I received the item yesterday, haven’t had time to try it yet so I can't say much. # Neutral",
-    "The product matches the description, packaging was okay, nothing special. # Neutral",
-    "It’s alright I guess, not too good but not too bad either.     # Neutral",
+    "The product matches the description, packaging was okay, nothing special.",
+    "Attending a virtual conference on AI.",
+    "Confusion surrounds me as I navigate through life's choices.",
 ]
-
+sample_texts = [preprocess_text(text) for text in sample_texts]
 # ===== In kết quả =====
 for text in sample_texts:
     result = predict_sentiment(text)  # hoặc _lr tùy model

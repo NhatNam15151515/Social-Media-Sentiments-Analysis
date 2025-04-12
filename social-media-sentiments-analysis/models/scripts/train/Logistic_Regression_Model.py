@@ -1,6 +1,9 @@
 import pandas as pd
 import numpy as np
 import os
+import re
+import string
+from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS
 from sklearn.model_selection import train_test_split
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.preprocessing import LabelEncoder
@@ -12,8 +15,11 @@ import pickle
 import warnings
 warnings.filterwarnings("ignore")
 
+# Các từ có giá trị thấp
+low_value_words = {'new', 'like', 'feeling', 'day', 'world'}
+
 # Đường dẫn lưu model
-save_dir = f'../../train/Logistic_Regression'
+save_dir = f'../../train_archive/Logistic_Regression'
 os.makedirs(save_dir, exist_ok=True)
 
 # 1. Đọc dữ liệu
@@ -25,16 +31,45 @@ print(data['Sentiment'].value_counts())
 # 2. Tiền xử lý
 data = data.dropna(subset=['Text', 'Sentiment'])
 data = data[data['Sentiment'].isin(['Positive', 'Negative', 'Neutral'])]
+def preprocess_text(text, remove_stopwords=True):
+    # 1. Lowercase
+    text = text.lower()
 
+    # 2. Remove URLs and emails
+    text = re.sub(r"http\S+|www\S+|https\S+", '', text)
+    text = re.sub(r"\S+@\S+", '', text)
+
+    # 3. Remove emojis and non-ASCII characters
+    text = text.encode('ascii', 'ignore').decode('utf-8')  # giữ lại ASCII thôi
+
+    # 4. Remove punctuation
+    text = text.translate(str.maketrans('', '', string.punctuation))
+
+    # 5. Remove numbers
+    text = re.sub(r'\d+', '', text)
+
+    # 6. Remove extra whitespaces
+    text = re.sub(r'\s+', ' ', text).strip()
+
+    # 7. Remove stopwords (optional)
+    if remove_stopwords:
+        text = ' '.join([word for word in text.split() if word not in ENGLISH_STOP_WORDS])
+
+    # 8. Remove low value word
+    text = ' '.join([word for word in text.split() if word not in low_value_words])
+
+
+    return text
+data['Clean_Text'] = data['Text'].apply(preprocess_text)
 label_encoder = LabelEncoder()
 y = label_encoder.fit_transform(data['Sentiment'])
 
 tfidf_vectorizer = TfidfVectorizer(
-    max_features=1500,
-    stop_words='english',
-    ngram_range=(1, 1)
+    max_features=2000,
+    ngram_range=(1, 3),
+    # stop_words='english',
 )
-X = tfidf_vectorizer.fit_transform(data['Text'])
+X = tfidf_vectorizer.fit_transform(data['Clean_Text'])
 
 # 3. Chia tập train / val / test
 X_train_val, X_test, y_train_val, y_test = train_test_split(X, y, test_size=0.15, random_state=42, stratify=y)
@@ -118,7 +153,7 @@ def plot_metrics_by_class(y_true_val, y_pred_val, y_true_test, y_pred_test):
     plt.suptitle('Biểu đồ Precision - Recall - F1 theo lớp (Logistic Regression)')
     plt.tight_layout()
     plt.savefig(f'{save_dir}/metrics_by_class_LR.png')
-    plt.show()
+    
 
 plot_metrics_by_class(y_val, y_val_pred, y_test, y_test_pred)
 
@@ -138,4 +173,4 @@ plt.xticks(rotation=0)
 plt.grid(True)
 plt.tight_layout()
 plt.savefig(f'{save_dir}/avg_metrics_comparison_LR.png')
-plt.show()
+

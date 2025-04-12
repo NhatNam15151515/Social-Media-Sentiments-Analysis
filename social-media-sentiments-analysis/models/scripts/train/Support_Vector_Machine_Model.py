@@ -1,8 +1,12 @@
 import pandas as pd
 import numpy as np
+import re
+import string
+from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS
 import os
 from sklearn.model_selection import train_test_split
 from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.preprocessing import LabelEncoder
 from sklearn.svm import SVC
 from sklearn.metrics import classification_report, accuracy_score, confusion_matrix, precision_recall_fscore_support, precision_score, recall_score, f1_score
@@ -12,23 +16,56 @@ import pickle
 import warnings
 warnings.filterwarnings("ignore")
 
+# Các từ có giá trị thấp
+low_value_words = {'new', 'like', 'feeling', 'day', 'world'}
+
+
 # Thư mục lưu model
-save_dir = '../../train/Support_Vector_Machine'
+save_dir = '../../train_archive/Support_Vector_Machine'
 os.makedirs(save_dir, exist_ok=True)
 
 # 1. Đọc dữ liệu
 data = pd.read_csv('../../../data/external/sentimentgroups.csv')
 data = data.dropna(subset=['Text', 'Sentiment'])
 data = data[data['Sentiment'].isin(['Positive', 'Negative', 'Neutral'])]
+# Tiền xử lý văn bản
+def preprocess_text(text, remove_stopwords=True):
+    # 1. Lowercase
+    text = text.lower()
+
+    # 2. Remove URLs and emails
+    text = re.sub(r"http\S+|www\S+|https\S+", '', text)
+    text = re.sub(r"\S+@\S+", '', text)
+
+    # 3. Remove emojis and non-ASCII characters
+    text = text.encode('ascii', 'ignore').decode('utf-8')  # giữ lại ASCII thôi
+
+    # 4. Remove punctuation
+    text = text.translate(str.maketrans('', '', string.punctuation))
+
+    # 5. Remove numbers
+    text = re.sub(r'\d+', '', text)
+
+    # 6. Remove extra whitespaces
+    text = re.sub(r'\s+', ' ', text).strip()
+
+    # 7. Remove stopwords (optional)
+    if remove_stopwords:
+        text = ' '.join([word for word in text.split() if word not in ENGLISH_STOP_WORDS])
+    # 8. Remove low value word
+    text = ' '.join([word for word in text.split() if word not in low_value_words])
+    return text
 
 # 2. Mã hóa nhãn
 label_encoder = LabelEncoder()
 y = label_encoder.fit_transform(data['Sentiment'])
 
-# 3. Vector hóa văn bản
-vectorizer = TfidfVectorizer(max_features=1500, stop_words='english', ngram_range=(1, 1))
-X = vectorizer.fit_transform(data['Text'])
-
+# 3. Tiền xử lý + Vector hóa văn bản
+data['Clean_Text'] = data['Text'].apply(preprocess_text)
+vectorizer = TfidfVectorizer(max_features=1000, ngram_range=(1, 3)) # Tạo vector hóa cho văn bản
+X = vectorizer.fit_transform(data['Clean_Text'])
+print("\n 5 dòng đầu tiên của dữ liệu sau khi tiền xử lý:")
+print(data[[ 'Clean_Text', 'Sentiment']].head())
 # 4. Chia dữ liệu
 X_train_val, X_test, y_train_val, y_test = train_test_split(X, y, test_size=0.15, stratify=y, random_state=42)
 X_train, X_val, y_train, y_val = train_test_split(X_train_val, y_train_val, test_size=0.176, stratify=y_train_val, random_state=42)
@@ -41,12 +78,11 @@ model.fit(X_train, y_train)
 y_val_pred = model.predict(X_val)
 y_test_pred = model.predict(X_test)
 
-print("\nValidation Accuracy:", accuracy_score(y_val, y_val_pred))
 print("\nValidation Report:\n", classification_report(y_val, y_val_pred, target_names=label_encoder.classes_))
-
-print("\nTest Accuracy:", accuracy_score(y_test, y_test_pred))
 print("\nTest Report:\n", classification_report(y_test, y_test_pred, target_names=label_encoder.classes_))
 
+print("\nValidation Accuracy:", accuracy_score(y_val, y_val_pred))
+print("Test Accuracy:", accuracy_score(y_test, y_test_pred))
 # 7. Lưu mô hình và thành phần
 pickle.dump(model, open(f'{save_dir}/sentiment.model', 'wb'))
 pickle.dump(vectorizer, open(f'{save_dir}/vectorizer.pkl', 'wb'))
@@ -60,7 +96,6 @@ plt.xlabel('Dự đoán')
 plt.ylabel('Thực tế')
 plt.title('Ma trận nhầm lẫn SVM')
 plt.savefig(f'{save_dir}/confusion_matrix.png')
-plt.show()
 
 # 9. Vẽ biểu đồ Precision, Recall, F1 theo lớp
 metrics_val = precision_recall_fscore_support(y_val, y_val_pred, average=None, labels=range(len(label_encoder.classes_)))
@@ -99,7 +134,6 @@ ax[2].grid(True)
 plt.suptitle('Biểu đồ Precision - Recall - F1 theo lớp (SVM)')
 plt.tight_layout()
 plt.savefig(f'{save_dir}/metrics_by_class.png')
-plt.show()
 
 # 10. Vẽ biểu đồ tổng hợp
 avg_metrics = {
@@ -117,4 +151,3 @@ plt.xticks(rotation=0)
 plt.grid(True)
 plt.tight_layout()
 plt.savefig(f'{save_dir}/avg_metrics_comparison.png')
-plt.show()

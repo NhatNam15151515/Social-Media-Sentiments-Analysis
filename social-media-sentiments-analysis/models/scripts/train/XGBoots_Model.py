@@ -1,8 +1,12 @@
 import pandas as pd
 import numpy as np
 import os
+import string
+import re
+from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS
 from sklearn.model_selection import train_test_split
 from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.preprocessing import LabelEncoder
 from sklearn.metrics import classification_report, accuracy_score, confusion_matrix
 import matplotlib.pyplot as plt
@@ -11,7 +15,12 @@ import pickle
 import xgboost as xgb
 import warnings
 warnings.filterwarnings("ignore")
-save_dir = f'../../train/XGBoost'
+
+# Các từ có giá trị thấp
+low_value_words = {'new', 'like', 'feeling', 'day', 'world'}
+
+
+save_dir = f'../../train_archive/XGBoost'
 # 1. Đọc dữ liệu từ file CSV đã được xử lý sentiment
 data = pd.read_csv('../../../data/external/sentimentgroups.csv')
 
@@ -28,19 +37,47 @@ data = data.dropna(subset=['Text', 'Sentiment'])
 
 # Loại bỏ các sentiment không thuộc 3 nhóm chính
 data = data[data['Sentiment'].isin(['Positive', 'Negative', 'Neutral'])]
+# Tiền xử lý văn bản
+def preprocess_text(text, remove_stopwords=True):
+    # 1. Lowercase
+    text = text.lower()
 
+    # 2. Remove URLs and emails
+    text = re.sub(r"http\S+|www\S+|https\S+", '', text)
+    text = re.sub(r"\S+@\S+", '', text)
+
+    # 3. Remove emojis and non-ASCII characters
+    text = text.encode('ascii', 'ignore').decode('utf-8')  # giữ lại ASCII thôi
+
+    # 4. Remove punctuation
+    text = text.translate(str.maketrans('', '', string.punctuation))
+
+    # 5. Remove numbers
+    text = re.sub(r'\d+', '', text)
+
+    # 6. Remove extra whitespaces
+    text = re.sub(r'\s+', ' ', text).strip()
+
+    # 7. Remove stopwords (optional)
+    if remove_stopwords:
+        text = ' '.join([word for word in text.split() if word not in ENGLISH_STOP_WORDS])
+
+    # 8. Remove low value word
+    text = ' '.join([word for word in text.split() if word not in low_value_words])
+    return text
 # Mã hóa nhãn Sentiment thành số
+data['Clean_Text'] = data['Text'].apply(preprocess_text)
 label_encoder = LabelEncoder()
 y = label_encoder.fit_transform(data['Sentiment'])
 
 # 3. Trích xuất đặc trưng - Giảm số lượng đặc trưng
-tfidf_vectorizer = TfidfVectorizer(
-    max_features=1500,  # Giảm xuống từ 5000
-    stop_words='english',
-    ngram_range=(1, 1)   # Chỉ sử dụng unigram thay vì (1,2)
-)
-
-X = tfidf_vectorizer.fit_transform(data['Text'])
+# vectorizer = TfidfVectorizer(
+#     max_features=1500,  # Giảm xuống từ 5000
+#     stop_words='english',
+#     ngram_range=(1, 1)   # Chỉ sử dụng unigram thay vì (1,2)
+# )
+vectorizer = TfidfVectorizer(max_features=1000, ngram_range=(1, 3))
+X = vectorizer.fit_transform(data['Clean_Text'])
 
 # 4. Chia dữ liệu thành tập train, validation và test (tỷ lệ 7:1.5:1.5)
 X_train_val, X_test, y_train_val, y_test = train_test_split(X, y, test_size=0.15, random_state=42, stratify=y)
@@ -62,7 +99,7 @@ params = {
     'num_class': len(label_encoder.classes_),
     'eval_metric': 'mlogloss',
     'colsample_bytree': 0.8,
-    'learning_rate': 0.1,
+    'learning_rate': 0.5,
     'max_depth': 10,
     'min_child_weight': 1,
     'n_estimators': 300,
@@ -92,17 +129,18 @@ model = xgb.train(
 y_val_pred = model.predict(dval)
 y_val_pred_labels = np.argmax(y_val_pred, axis=1)
 print("\nKết quả trên tập validation:")
-print("Accuracy:", accuracy_score(y_val, y_val_pred_labels))
+
 print("\nBáo cáo phân loại:")
 print(classification_report(y_val, y_val_pred_labels, target_names=label_encoder.classes_))
 
 y_test_pred = model.predict(dtest)
 y_test_pred_labels = np.argmax(y_test_pred, axis=1)
 print("\nKết quả trên tập test:")
-print("Accuracy:", accuracy_score(y_test, y_test_pred_labels))
+
 print("\nBáo cáo phân loại:")
 print(classification_report(y_test, y_test_pred_labels, target_names=label_encoder.classes_))
-
+print("Accuracy validation:", accuracy_score(y_val, y_val_pred_labels))
+print("Accuracy test:", accuracy_score(y_test, y_test_pred_labels))
 # 8. Tạo thư mục lưu model
 os.makedirs(save_dir, exist_ok=True)
 
@@ -119,7 +157,7 @@ plt.savefig(f'{save_dir}/confusion_matrix_XGB.png')
 
 # 9. Lưu mô hình và các thành phần cần thiết
 model.save_model(f'{save_dir}/sentiment.model')
-pickle.dump(tfidf_vectorizer, open(f'{save_dir}/vectorizer.pkl', 'wb'))
+pickle.dump(vectorizer, open(f'{save_dir}/vectorizer.pkl', 'wb'))
 pickle.dump(label_encoder, open(f'{save_dir}/label_encoder.pkl', 'wb'))
 
 # Vẽ biểu đồ train vs validation log loss
@@ -136,7 +174,7 @@ plt.legend()
 plt.grid(True)
 plt.tight_layout()
 plt.savefig(f'{save_dir}/training_curve.png')
-plt.show()
+
 # 10. Vẽ biểu đồ F1-score, Precision, Recall theo từng lớp
 from sklearn.metrics import precision_recall_fscore_support
 
@@ -181,7 +219,7 @@ ax[2].grid(True)
 plt.suptitle('Biểu đồ Precision - Recall - F1 theo lớp (XGBoost)')
 plt.tight_layout()
 plt.savefig(f'{save_dir}/metrics_by_class.png')
-plt.show()
+
 
 # 11. Vẽ biểu đồ tổng hợp các chỉ số trung bình
 from sklearn.metrics import precision_score, recall_score, f1_score
@@ -201,4 +239,4 @@ plt.xticks(rotation=0)
 plt.grid(True)
 plt.tight_layout()
 plt.savefig(f'{save_dir}/avg_metrics_comparison.png')
-plt.show()
+
